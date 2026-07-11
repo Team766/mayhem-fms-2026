@@ -9,54 +9,67 @@ fouls:
 # count is always "a robot scoring a piece"). Piece identity only — it is not a rollup; to group
 # counts together, give them a shared scoring_group (below).
 game_pieces:
-  - id: game_piece_1
-    display_name: "Game Piece 1"
-  - id: game_piece_2
-    display_name: "Game Piece 2"
+  - id: cube
+    display_name: "Treasure"
+  - id: golden_Cube
+    display_name: "Dragon's Crown"
+  - id: toss_Cube
+    display_name: "Tossed Cube"
 
 # scoring_groups: Declare rollup buckets. A scoring_counts entry tagged with scoring_group has its
 # live count and points summed into this bucket — both the ScoreSummary point field
 # (summary.<Group>Points) and the audience display. An entry with no scoring_group is its own
 # bucket under its own id (so a lone element needs no wrapper group). Tiebreakers reference buckets.
 scoring_groups:
-  - id: structure1
-    display_name: "Struct 1"
-  - id: structure2
-    display_name: "Struct 2"
+  - id: shelf
+    display_name: "Shelf"
+  - id: toss_Buclet
+    display_name: "Treasure Chest"
 
 # scoring_counts: Auto/teleop/endgame counter elements. Each entry lists the phases it can be
 # scored in, each with its own points value (a piece can be worth different points in different
 # phases or on different structures).
 scoring_counts:
-  - id: structure1_level1
-    display_name: "S1L1"
-    game_piece: game_piece_1
-    scoring_group: structure1
-    phases:
-      - phase: auto
-        points: 3
-      - phase: teleop
-        points: 1
-
-  - id: structure1_level2
-    display_name: "S1L2"
-    game_piece: game_piece_1
-    scoring_group: structure1
-    phases:
-      - phase: auto
-        points: 5
-      - phase: teleop
-        points: 3
-
-  - id: structure2_level1
-    display_name: "S2"
-    game_piece: game_piece_2
-    scoring_group: structure2
+  - id: shelf_Ground
+    display_name: "Ground Score "
+    game_piece: cube
+    scoring_group: Shelf
     phases:
       - phase: auto
         points: 4
-      - phase: teleop
+      - phase: teleop, endgame
         points: 2
+
+  - id: shelf_L1
+    display_name: "Level 1 Score"
+    game_piece: cube
+    scoring_group: Shelf
+    phases:
+      - phase: auto
+        points: 8
+      - phase: teleop, endgame
+        points: 5
+
+
+  - id: shelf_L2
+    display_name: "Level 2 Score"
+    game_piece: cube
+    scoring_group: shelf
+    phases:
+      - phase: auto
+        points: 12
+      - phase: teleop, endgame
+        points: 10
+
+  - id: shelf_Stacked
+    display_name: "Stacked Cube Score"
+    game_piece: cube
+    scoring_group: shelf
+    phases:
+      - phase: teleop, endgame
+        points: 8
+
+
 
 # statuses: Per-robot statuses (3 robots per alliance). Phases takes exactly one entry, same
 # {phase, points} shape as scoring_counts (auto or endgame only — teleop is not supported for
@@ -70,23 +83,20 @@ statuses:
     display_name: "Leave"
     phases:
       - phase: auto
-        points: 3
-
-  - id: muster
-    display_name: "Muster"
+        points: 4
+  - id: balance_Beam
+    display_name: "Mountain Top"
     phases:
       - phase: auto
-    values:
-      - id: none
-        display_name: "None"
-        points: 0
-      - id: partial
-        display_name: "Partial"
-        points: 3
-      - id: full
-        display_name: "Full"
-        points: 6
-
+        points: 12
+      - phase: endgame
+        points: 12
+  - id: the_Toss
+    display_name: "The toss tm"
+    phases:
+      - phase: endgame
+        points: 2
+    
   - id: park
     display_name: "Park"
     phases:
@@ -113,6 +123,8 @@ ranking_points:
 ranking_tiebreakers:
   - metric: total_points
   - metric: auto_points
+  
+
 
 # playoff_tiebreakers: Drives DetermineMatchStatus() cascade for tied playoff matches.
 # Opponent major fouls are always first (implicit — don't list here).

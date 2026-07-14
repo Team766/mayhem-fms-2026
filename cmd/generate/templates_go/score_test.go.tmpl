@@ -6,9 +6,8 @@
 package game
 
 import (
-	"testing"
-
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestGeneratedScoreEquals(t *testing.T) {
@@ -45,6 +44,21 @@ func TestGeneratedScoreEquals(t *testing.T) {
 	s.[[camel $st.ID]]Statuses[1] = [[camel $st.ID]][[camel (index $st.Values (add (len $st.Values) -1)).ID]]
 	s.Cycle[[camel $st.ID]]Status(1)
 	assert.Equal(t, [[camel $st.ID]][[camel (index $st.Values 0).ID]], s.[[camel $st.ID]]Statuses[1])
+[[end]]}
+
+[[end]][[range .Statuses]][[$st := .]]func TestGeneratedStatusHelpers_[[camel $st.ID]](t *testing.T) {
+	s := &Score{}
+[[if $st.IsBool]]	assert.False(t, s.Any[[camel $st.ID]]Status())
+	assert.Equal(t, 0, s.Count[[camel $st.ID]]Status())
+	s.[[camel $st.ID]]Statuses[0] = true
+	assert.True(t, s.Any[[camel $st.ID]]Status())
+	assert.Equal(t, 1, s.Count[[camel $st.ID]]Status())
+[[else]]	// One robot at the highest value; the rest stay at the baseline (first) value.
+	s.[[camel $st.ID]]Statuses[0] = [[camel $st.ID]][[camel (index $st.Values (add (len $st.Values) -1)).ID]]
+	assert.True(t, s.Any[[camel $st.ID]]Status([[camel $st.ID]][[camel (index $st.Values 1).ID]]))
+	assert.Equal(t, 1, s.Count[[camel $st.ID]]Status([[camel $st.ID]][[camel (index $st.Values 1).ID]]))
+	// atLeast the baseline value counts every robot.
+	assert.Equal(t, 3, s.Count[[camel $st.ID]]Status([[camel $st.ID]][[camel (index $st.Values 0).ID]]))
 [[end]]}
 
 [[end]]

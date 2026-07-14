@@ -155,7 +155,7 @@ playoff_tiebreakers:
 func ComputeXRP(score, opponentScore Score, summary ScoreSummary) bool
 ```
 
-`summary` is this alliance's fully-computed `ScoreSummary` — prefer its generated totals (e.g. `summary.AutoPoints`, `summary.Structure1Points`) over re-deriving them from raw counts, so the RP logic can't drift from the generated point math. `score`/`opponentScore` give the raw per-element counts for thresholds the summary doesn't expose (and for cross-alliance logic). The opponent's *summary* is intentionally not passed — it would recurse back through this same logic.
+`summary` carries this alliance's point totals — prefer its generated totals (e.g. `summary.AutoPoints`, `summary.Structure1Points`) over re-deriving them from raw counts, so the RP logic can't drift from the generated point math. Note the ranking-point fields (`summary.<X>RankingPoint`) and `summary.BonusRankingPoints` are **not yet populated** when these funcs run — they're computed from the funcs' results — so don't read them here. `score`/`opponentScore` give the raw per-element counts for thresholds the summary doesn't expose (and for cross-alliance logic). The opponent's *summary* is intentionally not passed — it would recurse back through this same logic.
 
 For the `custom_game.yaml` schema above, that would look like:
 ```go
@@ -164,17 +164,21 @@ func ComputeAutonRP(score, opponentScore Score, summary ScoreSummary) bool {
 }
 
 func ComputeEndgameRP(score, opponentScore Score, summary ScoreSummary) bool {
-	parked := 0
-	for _, p := range score.ParkStatuses {
-		if p {
-			parked++
-		}
-	}
-	return parked >= 2
+	return score.CountParkStatus() >= 2   // status helper (see below)
 }
 ```
 
-Field names (`AutoStructure1Level1Count`, `ParkStatuses`, etc.) are derived from each `scoring_counts`/`statuses` id — run the generator first so they exist. Renaming or removing an entry means updating this file by hand to match.
+**Status helpers.** For every status the generator emits `Any<Status>Status` / `Count<Status>Status` methods on `Score`, so you don't hand-roll the three-robot loop. A bool status takes no argument (`score.AnyParkStatus()`, `score.CountParkStatus()`); an **enum** status takes an `atLeast` threshold and counts robots whose state is at least that value, compared by **declared value order** (list your enum values weakest-first): `score.CountMusterStatus(MusterPartial) >= 2` means "at least two robots mustered partially or better."
+
+**Opponent-foul helper.** To award a bonus RP when the *opponent* commits specific fouls (the standard FRC pattern), call `HasRankingPointFoul` on the opponent's score with the rule numbers:
+```go
+func ComputeSafetyRP(score, opponentScore Score, summary ScoreSummary) bool {
+	return opponentScore.HasRankingPointFoul("G418", "G428")
+}
+```
+A foul only counts when its rule is flagged `is_ranking_point` in [`game/custom_rules.go`](#custom-rules), so keep that flag in sync with the numbers you pass. (This helper is committed library code in `game/custom_foul_helpers.go`, not generated.)
+
+Field names (`AutoStructure1Level1Count`, `ParkStatuses`, etc.) are derived from each `scoring_counts`/`statuses` id — run the generator first so they exist. Renaming or removing an entry means updating this file by hand to match. To make that easy to get right, `go generate` validates this file against the current config: when a `logic_func` named in `ranking_points` has no matching function here, it prints a **copy-pasteable stub** for it followed by a reference of the data available for the current config (the `score`/`opponentScore` count fields, the status helpers with their enum values, and the `summary` point totals) — so you can start without hunting through the generated Go. It also flags any `score`/`opponentScore`/`summary` field access that isn't a generated field — pointing at the line and suggesting the closest current field (e.g. *"`score.AutoStructure1Level1Count` is not a field generated from custom_game.yaml — did you mean `AutoShelfL1Count`?"*). It's a best-effort aid over direct parameter accesses; anything it can't see (a local alias, a helper function) still surfaces at `go build -tags custom`, just as a terser compiler error.
 
 ### Custom Rules
 
@@ -201,7 +205,7 @@ For branding, swap `static/img/game-logo.png` (small in-match badge) and `static
 
 ## Generated Files
 
-`go generate ./...` (or `go run ./cmd/generate`) reads `custom_game.yaml` (and, for the UI surfaces, the `custom_*.tmpl` template sources above) and writes these files — all gitignored, all regenerated from scratch on every run, never hand-edited:
+Regenerate with **`go generate ./...`** (or `go run ./cmd/generate`). Use the `./...` form: a bare `go generate` run from the repo root matches only the root package, which has no directive, so it does nothing and prints nothing — edits to `custom_game.yaml` then silently don't take effect and the next `go build -tags custom` compiles against stale generated code. The command reads `custom_game.yaml` (and, for the UI surfaces, the `custom_*.tmpl` template sources above) and writes these files — all gitignored, all regenerated from scratch on every run, never hand-edited:
 
 | File | Contents |
 |---|---|
@@ -212,7 +216,9 @@ For branding, swap `static/img/game-logo.png` (small in-match badge) and `static
 | `templates/generated_scoring_panel.html` + `static/js/generated_scoring_panel.js` | Scoring panel: counters and status toggles, organized by phase |
 | `templates/generated_audience_display.html` + `static/js/generated_audience_display.js` | Audience display: live ticker and final breakdown, grouped per the scoring-group resolution chain. The HTML loads the shared `audience_display.js` plus the generated companion, which defines only the custom `handleRealtimeScoreGenerated`/`handleScorePostedGenerated` handlers the shared file dispatches to. |
 | `templates/generated_referee_panel.html` + `static/js/generated_referee_panel.js` | Referee panel: raw per-element counts by phase, per-robot status badges |
+| `web/generated_reports_rankings_custom.go` | Qualification-rankings CSV/PDF report handlers, whose columns track the configured `ranking_tiebreakers` |
 | `game/generated_score_test.go`, `game/generated_score_summary_test.go`, `game/generated_ranking_fields_test.go` | Tests for `Score` mutators, `ScoreSummary` (point computation, group rollup, tiebreak cascade), and `RankingFields` (ranking sort cascade) |
+| `web/generated_reports_rankings_custom_test.go`, `tournament/generated_qualification_rankings_custom_test.go` | Tests for the rankings report (CSV columns per configured tiebreakers) and end-to-end `CalculateRankings` (scores via the first declared scoring count, so no field name is hard-coded) |
 | `cmd/generate/generated_template_test.go` | Tests that the rendered templates parse and contain the expected per-element markup |
 
 `go run ./cmd/generate clean` removes all of the above. The `custom_*.tmpl` template sources are committed and hand-edited, so they are *not* removed by `clean`.

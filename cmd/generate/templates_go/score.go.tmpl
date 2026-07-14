@@ -17,6 +17,8 @@ type Score struct {
 [[end]][[end]]
 [[range .Statuses]]	[[camel .ID]]Statuses [3][[if .IsBool]]bool[[else]][[camel .ID]]Status[[end]]
 [[end]]
+	// Base (non-generated) Score fields. If you add, remove, or rename one, update the base-field
+	// list in generatedFieldSets (cmd/generate/validate_logic.go) to match — TestGeneratedFieldSetsMatchTemplates guards this.
 	Fouls     []Foul
 	PlayoffDq bool
 
@@ -122,3 +124,46 @@ func (s *Score) SetEnumStatus(id string, robotIndex int, valueId string) bool {
 [[end]][[end]]	}
 	return false
 }
+
+// Per-status convenience helpers for scoring logic — Any reports whether any of the 3 robots
+// qualifies, Count how many do. For enum statuses, "qualifies" means the robot's status is at least
+// atLeast, compared by declared value order (lowest first).
+[[range .Statuses]][[$st := .]][[if $st.IsBool]]func (s *Score) Any[[camel $st.ID]]Status() bool {
+	for _, v := range s.[[camel $st.ID]]Statuses {
+		if v {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Score) Count[[camel $st.ID]]Status() int {
+	n := 0
+	for _, v := range s.[[camel $st.ID]]Statuses {
+		if v {
+			n++
+		}
+	}
+	return n
+}
+
+[[else]]func (s *Score) Any[[camel $st.ID]]Status(atLeast [[camel $st.ID]]Status) bool {
+	for _, v := range s.[[camel $st.ID]]Statuses {
+		if v >= atLeast {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Score) Count[[camel $st.ID]]Status(atLeast [[camel $st.ID]]Status) int {
+	n := 0
+	for _, v := range s.[[camel $st.ID]]Statuses {
+		if v >= atLeast {
+			n++
+		}
+	}
+	return n
+}
+
+[[end]][[end]]

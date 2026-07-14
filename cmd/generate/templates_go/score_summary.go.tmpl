@@ -16,6 +16,8 @@ type ScoreSummary struct {
 [[range .ScoringGroups]]	[[camel .ID]]Points int
 [[end]][[range .Statuses]]	[[camel .ID]]Points int
 [[end]]
+	// Base (non-generated) ScoreSummary fields. If you add, remove, or rename one, update the base-
+	// field list in generatedFieldSets (cmd/generate/validate_logic.go) — TestGeneratedFieldSetsMatchTemplates guards this.
 	AutoPoints    int
 	TeleopPoints  int
 	EndgamePoints int

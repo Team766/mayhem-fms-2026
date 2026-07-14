@@ -23,6 +23,8 @@ var validStatusPhases = map[string]bool{"auto": true, "endgame": true}
 // cleanPatterns lists every generated-file glob, matching the patterns in .gitignore.
 var cleanPatterns = []string{
 	"game/generated_*.go",
+	"web/generated_*.go",
+	"tournament/generated_*.go",
 	"templates/generated_*.html",
 	"static/js/generated_*.js",
 	"cmd/generate/generated_*_test.go",
@@ -83,6 +85,13 @@ func main() {
 	// Validation
 	validationErrors := validateGameYAML(&yamlData)
 
+	// Only check the hand-written scoring logic once the config itself is valid — otherwise the
+	// generated field set it's checked against may be malformed, producing misleading errors.
+	if len(validationErrors) == 0 {
+		logicPath := filepath.Join(*outRoot, "game", "custom_scoring_logic.go")
+		validationErrors = append(validationErrors, validateCustomScoringLogic(&yamlData, logicPath)...)
+	}
+
 	if len(validationErrors) > 0 {
 		fmt.Fprintln(os.Stderr, "Validation errors in custom_game.yaml:")
 		for _, errStr := range validationErrors {
@@ -127,6 +136,24 @@ func main() {
 
 	if err := generateRankingFieldsTest(&yamlData, gameDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating ranking fields test: %v\n", err)
+		os.Exit(1)
+	}
+
+	webDir := filepath.Join(*outRoot, "web")
+	tournamentDir := filepath.Join(*outRoot, "tournament")
+
+	if err := generateReportsRankings(&yamlData, webDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating rankings report handler: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := generateReportsRankingsTest(&yamlData, webDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating rankings report test: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := generateQualificationRankingsTest(&yamlData, tournamentDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating qualification rankings test: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -232,7 +259,10 @@ func validateGameYAML(yamlData *GameYAML) []string {
 		}
 	}
 
-	// scoring_counts
+	// scoring_counts. countCamel guards against two distinct ids that CamelCase to the same Go
+	// identifier (e.g. "deck2" and "deck_2" -> "Deck2"), which would emit a duplicate Score field,
+	// Adjust<Camel>Count method, and PointsVal const.
+	countCamel := make(map[string]string)
 	for i, sc := range yamlData.ScoringCounts {
 		if sc.ID == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("scoring_counts[%d]: id is required", i))
@@ -243,6 +273,11 @@ func validateGameYAML(yamlData *GameYAML) []string {
 			continue
 		}
 		checkDup(sc.ID, "scoring_counts")
+		if camel := toCamelCase(sc.ID); countCamel[camel] != "" && countCamel[camel] != sc.ID {
+			validationErrors = append(validationErrors, fmt.Sprintf("scoring_counts[%d].%s: id CamelCases to '%s', colliding with scoring count '%s' (both would generate the same Score field/method)", i, sc.ID, camel, countCamel[camel]))
+		} else {
+			countCamel[camel] = sc.ID
+		}
 
 		if sc.GamePiece == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("scoring_counts[%d].%s: game_piece is required", i, sc.ID))
@@ -276,7 +311,9 @@ func validateGameYAML(yamlData *GameYAML) []string {
 		}
 	}
 
-	// statuses
+	// statuses. statusCamel guards CamelCase collisions among status ids (which would produce a
+	// duplicate <Camel>Statuses field, Set<Camel>Status method, and enum type), analogous to counts.
+	statusCamel := make(map[string]string)
 	for i, status := range yamlData.Statuses {
 		if status.ID == "" {
 			validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d]: id is required", i))
@@ -287,6 +324,11 @@ func validateGameYAML(yamlData *GameYAML) []string {
 			continue
 		}
 		checkDup(status.ID, "statuses")
+		if camel := toCamelCase(status.ID); statusCamel[camel] != "" && statusCamel[camel] != status.ID {
+			validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d].%s: id CamelCases to '%s', colliding with status '%s' (both would generate the same Score field/method)", i, status.ID, camel, statusCamel[camel]))
+		} else {
+			statusCamel[camel] = status.ID
+		}
 
 		if len(status.Phases) != 1 {
 			validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d].%s: exactly one phase is required (got %d)", i, status.ID, len(status.Phases)))
@@ -298,7 +340,15 @@ func validateGameYAML(yamlData *GameYAML) []string {
 			if len(status.Values) < 2 {
 				validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d].%s: enum status requires at least 2 values", i, status.ID))
 			}
+			// The generated [3]<Camel>Status array zero-values to the first declared value, so every
+			// un-scored robot holds it. If it scored points, they'd be awarded silently (and the
+			// generated tests, which assume a zero Score contributes 0, would fail). Require the
+			// baseline value to be worth 0.
+			if len(status.Values) > 0 && status.Values[0].Points != 0 {
+				validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d].%s: the first enum value '%s' must have points: 0 (it is the default state of an un-scored robot)", i, status.ID, status.Values[0].ID))
+			}
 			statusVals := make(map[string]bool)
+			valCamel := make(map[string]string)
 			for j, val := range status.Values {
 				if val.ID == "" {
 					validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d].%s values[%d]: id is required", i, status.ID, j))
@@ -307,6 +357,11 @@ func validateGameYAML(yamlData *GameYAML) []string {
 						validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d].%s: duplicate value id '%s'", i, status.ID, val.ID))
 					}
 					statusVals[val.ID] = true
+					if camel := toCamelCase(val.ID); valCamel[camel] != "" && valCamel[camel] != val.ID {
+						validationErrors = append(validationErrors, fmt.Sprintf("statuses[%d].%s: value id '%s' CamelCases to '%s', colliding with value '%s'", i, status.ID, val.ID, camel, valCamel[camel]))
+					} else {
+						valCamel[camel] = val.ID
+					}
 				}
 			}
 		} else if len(status.Phases) == 1 {
@@ -333,19 +388,22 @@ func validateGameYAML(yamlData *GameYAML) []string {
 
 	buckets := buildScoringGroups(yamlData)
 
-	// Reject ids whose generated ScoreSummary point field (CamelCase(id)+"Points") collides with a
-	// built-in field or with another generated field. This catches e.g. a scoring_group/status id of
-	// "auto_points" (-> AutoPoints) or "match" (-> MatchPoints), and two ids that CamelCase to the
-	// same name (e.g. "auto_points" and "Auto_points"), either of which would emit uncompilable Go.
+	// Reject ids whose generated point field (CamelCase(id)+"Points") collides with a built-in field
+	// or with another generated field. This catches e.g. a scoring_group/status id of "auto_points"
+	// (-> AutoPoints) or "match" (-> MatchPoints), and two ids that CamelCase to the same name (e.g.
+	// "auto_points" and "Auto_points"), either of which would emit uncompilable Go. "RankingPoints"
+	// is reserved too: it isn't a ScoreSummary built-in, but a tiebreaker on such an id would emit a
+	// RankingFields field colliding with the built-in RankingPoints.
 	summaryFields := map[string]string{
 		"AutoPoints": "a built-in field", "TeleopPoints": "a built-in field",
 		"EndgamePoints": "a built-in field", "MatchPoints": "a built-in field",
 		"FoulPoints": "a built-in field", "BonusRankingPoints": "a built-in field",
+		"RankingPoints": "the built-in RankingFields field",
 	}
 	checkSummaryField := func(id, context string) {
 		field := toCamelCase(id) + "Points"
 		if existing, ok := summaryFields[field]; ok {
-			validationErrors = append(validationErrors, fmt.Sprintf("%s '%s': generated ScoreSummary field %s collides with %s", context, id, field, existing))
+			validationErrors = append(validationErrors, fmt.Sprintf("%s '%s': generated point field %s collides with %s", context, id, field, existing))
 			return
 		}
 		summaryFields[field] = context + " '" + id + "'"
@@ -355,6 +413,35 @@ func validateGameYAML(yamlData *GameYAML) []string {
 	}
 	for _, status := range yamlData.Statuses {
 		checkSummaryField(status.ID, "status")
+	}
+
+	// Reject collisions among the generated *PointsVal package consts. These live in one package
+	// scope, and a count scored in a phase, a bool status, and an enum value each emit one — so a
+	// count "foo" in auto (FooAutoPointsVal) and a bool status "foo_auto" (FooAutoPointsVal) would
+	// clash even though neither the raw ids nor the CamelCase checks above catch it.
+	pointsValConsts := make(map[string]string)
+	checkPointsVal := func(name, source string) {
+		if existing, ok := pointsValConsts[name]; ok {
+			validationErrors = append(validationErrors, fmt.Sprintf("%s: generated const %s collides with %s", source, name, existing))
+			return
+		}
+		pointsValConsts[name] = source
+	}
+	for _, sc := range yamlData.ScoringCounts {
+		for _, ep := range sc.Phases {
+			if validElementPhases[ep.Phase] {
+				checkPointsVal(toCamelCase(sc.ID)+phaseFieldPrefix[ep.Phase]+"PointsVal", "scoring count '"+sc.ID+"'")
+			}
+		}
+	}
+	for _, status := range yamlData.Statuses {
+		if len(status.Values) == 0 {
+			checkPointsVal(toCamelCase(status.ID)+"PointsVal", "status '"+status.ID+"'")
+		} else {
+			for _, val := range status.Values {
+				checkPointsVal(toCamelCase(status.ID)+toCamelCase(val.ID)+"PointsVal", "status '"+status.ID+"' value '"+val.ID+"'")
+			}
+		}
 	}
 
 	// Build the set of valid tiebreaker metrics: the built-in phase/total points, plus every
@@ -374,18 +461,29 @@ func validateGameYAML(yamlData *GameYAML) []string {
 		validElements[status.ID] = true
 	}
 
-	// ranking_tiebreakers
+	// ranking_tiebreakers — each metric must be known and must not repeat: two entries resolving to
+	// the same RankingFields field would emit a duplicate struct field (and a duplicate composite-
+	// literal key in the generated tests), which fails to compile.
+	seenRankingTiebreaker := make(map[string]bool)
 	for i, tb := range yamlData.RankingTiebreakers {
 		if !validElements[tb.Metric] {
 			validationErrors = append(validationErrors, fmt.Sprintf("ranking_tiebreakers[%d]: unknown metric '%s'", i, tb.Metric))
+		} else if seenRankingTiebreaker[tb.Metric] {
+			validationErrors = append(validationErrors, fmt.Sprintf("ranking_tiebreakers[%d]: duplicate metric '%s'", i, tb.Metric))
 		}
+		seenRankingTiebreaker[tb.Metric] = true
 	}
 
-	// playoff_tiebreakers
+	// playoff_tiebreakers — likewise reject repeats: a duplicate metric emits a duplicate
+	// DetermineMatchStatus tiebreak test function, which fails the generated test build.
+	seenPlayoffTiebreaker := make(map[string]bool)
 	for i, tb := range yamlData.PlayoffTiebreakers {
 		if !validElements[tb.Metric] {
 			validationErrors = append(validationErrors, fmt.Sprintf("playoff_tiebreakers[%d]: unknown metric '%s'", i, tb.Metric))
+		} else if seenPlayoffTiebreaker[tb.Metric] {
+			validationErrors = append(validationErrors, fmt.Sprintf("playoff_tiebreakers[%d]: duplicate metric '%s'", i, tb.Metric))
 		}
+		seenPlayoffTiebreaker[tb.Metric] = true
 	}
 
 	return validationErrors

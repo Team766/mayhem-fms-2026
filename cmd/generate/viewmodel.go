@@ -13,7 +13,10 @@
 
 package main
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // CountView is one scoring count scored in one phase. The generated Score field is
 // phasePrefix(Phase)+camel(ID)+"Count", composed in the templates.
@@ -89,6 +92,14 @@ type TiebreakerView struct {
 	Label string
 }
 
+// ScoreStmt describes how a test can give an alliance a scoring lead in a generated Score: assign
+// Value to score.Field. Field is a generated Score field (a scoring count, or a status array) and
+// Value is the Go literal to assign it. Both empty when the config declares nothing to score.
+type ScoreStmt struct {
+	Field string
+	Value string
+}
+
 // TemplateData is the complete, stable contract exposed to the .tmpl files.
 type TemplateData struct {
 	GameName        string
@@ -102,7 +113,14 @@ type TemplateData struct {
 	// RankingTiebreakerFields are the resolved RankingFields/ScoreSummary field names for each
 	// ranking_tiebreakers metric, in order, e.g. ["MatchPoints", "AutoPoints"].
 	RankingTiebreakerFields []string
-	PlayoffTiebreakers      []TiebreakerView // DetermineMatchStatus tiebreak cascade
+	// RankingTiebreakers are the same tiebreakers with a human column Label alongside the Field, for
+	// surfaces that show a readable header (the PDF rankings report) rather than the raw Go field name.
+	RankingTiebreakers []TiebreakerView
+	PlayoffTiebreakers []TiebreakerView // DetermineMatchStatus tiebreak cascade
+	// RankingTestScore is how the generated qualification-rankings test gives an alliance a lead —
+	// derived from the config so the test works for count-based, bool-status, and enum-status games
+	// alike (and is empty for a game that declares nothing to score).
+	RankingTestScore ScoreStmt
 }
 
 // metricFieldName maps a tiebreaker metric to its Go field name on RankingFields/ScoreSummary.
@@ -157,6 +175,68 @@ func playoffTiebreakerLabel(metric string, y *GameYAML) string {
 		}
 		return strings.ToUpper(name)
 	}
+}
+
+// rankingTiebreakerLabel returns a short, readable column header for a ranking-tiebreaker metric
+// (e.g. "Match Pts", "Auto Pts"), used for the PDF rankings report. Built-in point metrics have
+// fixed labels; any other metric is a scoring-group/count/status id, labeled by its display name.
+func rankingTiebreakerLabel(metric string, y *GameYAML) string {
+	switch metric {
+	case "auto_points":
+		return "Auto Pts"
+	case "teleop_points":
+		return "Teleop Pts"
+	case "endgame_points":
+		return "Endgame Pts"
+	case "total_points":
+		return "Match Pts"
+	default:
+		name := metric
+		for _, g := range y.ScoringGroups {
+			if g.ID == metric {
+				name = g.DisplayName
+			}
+		}
+		for _, sc := range y.ScoringCounts {
+			if sc.ID == metric {
+				name = sc.DisplayName
+			}
+		}
+		for _, s := range y.Statuses {
+			if s.ID == metric {
+				name = s.DisplayName
+			}
+		}
+		return name
+	}
+}
+
+// buildRankingTestScore derives a single scoring move that gives an alliance a lead, so the generated
+// qualification-rankings test never has to name a hard-coded field. It prefers the first scoring
+// count; failing that (a status-only game) the first status — a bool set true on all robots, or an
+// enum set to its highest-scoring value. Empty when the config declares nothing to score.
+func buildRankingTestScore(y *GameYAML) ScoreStmt {
+	if len(y.ScoringCounts) > 0 {
+		sc := y.ScoringCounts[0]
+		ph := sc.Phases[0]
+		return ScoreStmt{Field: phaseFieldPrefix[ph.Phase] + toCamelCase(sc.ID) + "Count", Value: "10"}
+	}
+	if len(y.Statuses) > 0 {
+		st := y.Statuses[0]
+		field := toCamelCase(st.ID) + "Statuses"
+		if len(st.Values) == 0 { // bool status
+			return ScoreStmt{Field: field, Value: "[3]bool{true, true, true}"}
+		}
+		best := st.Values[0] // enum status: pick the highest-scoring state
+		for _, v := range st.Values[1:] {
+			if v.Points > best.Points {
+				best = v
+			}
+		}
+		enum := "game." + toCamelCase(st.ID) + toCamelCase(best.ID)
+		return ScoreStmt{Field: field, Value: fmt.Sprintf("[3]game.%sStatus{%s, %s, %s}", toCamelCase(st.ID), enum, enum, enum)}
+	}
+	return ScoreStmt{}
 }
 
 // phaseOrder is the canonical phase ordering used everywhere a UI is laid out top-to-bottom.
@@ -253,10 +333,17 @@ func buildTemplateData(yamlData *GameYAML) TemplateData {
 		td.ScoringGroups = append(td.ScoringGroups, gv)
 	}
 
-	// Ranking tiebreaker field names (resolved), in order.
+	// Ranking tiebreaker field names (resolved), in order, plus a labeled form for readable headers.
 	for _, tb := range yamlData.RankingTiebreakers {
 		td.RankingTiebreakerFields = append(td.RankingTiebreakerFields, metricFieldName(tb.Metric))
+		td.RankingTiebreakers = append(td.RankingTiebreakers, TiebreakerView{
+			Field: metricFieldName(tb.Metric),
+			Label: rankingTiebreakerLabel(tb.Metric, yamlData),
+		})
 	}
+
+	// How the qualification-rankings test grants a scoring lead (count/status-aware).
+	td.RankingTestScore = buildRankingTestScore(yamlData)
 
 	// Playoff tiebreaker cascade.
 	for _, tb := range yamlData.PlayoffTiebreakers {

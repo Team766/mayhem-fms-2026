@@ -25,14 +25,17 @@ func TestScore2() *Score {
 	}
 }
 
+// TestRanking1/TestRanking2 are shared fixtures for the custom build (api, model, and report tests).
+// They deliberately set only build-independent RankingFields — RankingPoints, the win/loss record,
+// and Played — and leave the configured ranking_tiebreaker columns at their zero value, so this file
+// compiles for any custom_game.yaml. Tests that need specific tiebreaker values (the rankings
+// report) are generated from the config and set those columns themselves.
 func TestRanking1() *Ranking {
 	return &Ranking{
 		TeamId: 254,
 		Rank:   1,
 		RankingFields: RankingFields{
 			RankingPoints: 20,
-			MatchPoints:   10,
-			AutoPoints:    10,
 			Random:        0.254,
 			Wins:          3,
 			Losses:        2,
@@ -48,8 +51,6 @@ func TestRanking2() *Ranking {
 		Rank:   2,
 		RankingFields: RankingFields{
 			RankingPoints: 18,
-			MatchPoints:   5,
-			AutoPoints:    5,
 			Random:        0.1114,
 			Wins:          1,
 			Losses:        3,

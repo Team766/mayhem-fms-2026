@@ -8,9 +8,12 @@ package game
 //
 //	func(score, opponentScore Score, summary ScoreSummary) bool
 //
-//   - summary is this alliance's fully-computed ScoreSummary — prefer its generated totals (e.g.
-//     summary.AutoPoints, summary.ShipPoints) over re-deriving them from raw counts, so the logic
-//     can't drift from the generated point math.
+//   - summary carries this alliance's point totals — the phase totals (summary.AutoPoints, …), the
+//     per-group/status point fields (e.g. summary.ShipPoints), and MatchPoints/FoulPoints/Score.
+//     Prefer these over re-deriving from raw counts so the logic can't drift from the generated
+//     point math. Note that the ranking-point fields (summary.<X>RankingPoint) and
+//     summary.BonusRankingPoints are NOT yet populated when these funcs run — they are computed from
+//     the results of these funcs — so don't read them here.
 //   - score / opponentScore are the raw per-element counts, for thresholds the summary doesn't
 //     expose (and for cross-alliance logic). The opponent's *summary* is deliberately not passed —
 //     it would recurse back through this same logic.

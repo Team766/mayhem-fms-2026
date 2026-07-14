@@ -56,6 +56,13 @@ func buildScoringGroups(yamlData *GameYAML) []ScoringBucket {
 
 var phaseSectionTitle = map[string]string{"auto": "Auto", "teleop": "Teleop", "endgame": "Endgame"}
 
+// generateReportsRankings emits web/generated_reports_rankings_custom.go — the CSV/PDF qualification
+// rankings report handlers, whose middle columns track the configured ranking_tiebreakers so the
+// report never references a RankingFields column the current custom_game.yaml doesn't generate.
+func generateReportsRankings(yamlData *GameYAML, webDir string) error {
+	return renderGoTemplate("reports_rankings_custom.go.tmpl", filepath.Join(webDir, "generated_reports_rankings_custom.go"), buildTemplateData(yamlData))
+}
+
 func generateScoringPanelTemplate(yamlData *GameYAML, templatesDir string) error {
 	return renderWebTemplate(
 		filepath.Join(templatesDir, "custom_scoring_panel.html.tmpl"),

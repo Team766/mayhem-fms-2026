@@ -30,6 +30,8 @@ _testmain.go
 static/logs
 static/img/avatars
 game/generated_*.go
+web/generated_*.go
+tournament/generated_*.go
 templates/generated_*.html
 static/js/generated_*.js
 cmd/generate/generated_*_test.go

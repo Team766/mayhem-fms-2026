@@ -40,3 +40,33 @@ func TestFoulPointValueCustom(t *testing.T) {
 	assert.Equal(t, MajorFoulPoints, fMajor.PointValue())
 	assert.Equal(t, MinorFoulPoints, fMinor.PointValue())
 }
+
+func TestHasRankingPointFoul(t *testing.T) {
+	// Derive a ranking-point rule and a non-ranking-point rule from whatever custom_rules.go ships,
+	// so the test doesn't hardcode a rule number.
+	var rpRule, plainRule *Rule
+	for _, r := range GetAllRules() {
+		if r.IsRankingPoint {
+			if rpRule == nil {
+				rpRule = r
+			}
+		} else if plainRule == nil {
+			plainRule = r
+		}
+	}
+	if rpRule == nil {
+		t.Skip("no is-ranking-point rule defined in custom_rules.go")
+	}
+
+	scored := &Score{Fouls: []Foul{{RuleId: rpRule.Id}}}
+	assert.True(t, scored.HasRankingPointFoul(rpRule.RuleNumber))
+	assert.True(t, scored.HasRankingPointFoul("ZZZ", rpRule.RuleNumber)) // varargs membership
+
+	assert.False(t, scored.HasRankingPointFoul("ZZZ"))                 // not in the set
+	assert.False(t, (&Score{}).HasRankingPointFoul(rpRule.RuleNumber)) // no fouls
+	if plainRule != nil {
+		// A non-ranking-point foul must not count even if its number is passed.
+		notRp := &Score{Fouls: []Foul{{RuleId: plainRule.Id}}}
+		assert.False(t, notRp.HasRankingPointFoul(plainRule.RuleNumber))
+	}
+}

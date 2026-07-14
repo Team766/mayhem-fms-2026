@@ -13,7 +13,7 @@ type Rule struct {
 // All rules from the 2022 game that carry point penalties.
 // @formatter:off
 var rules = []*Rule{
-	
+
 	{1, "G210", true, false, "A strategy aimed at forcing an opponent to violate a rule is not allowed."},
 	{2, "G401", true, false, "In AUTO, each DRIVE TEAM member must remain in their staged areas. A DRIVE TEAM member staged behind a HUMAN STARTING LINE may not contact anything in front of that HUMAN STARTING LINE, unless for personal or equipment safety, to press the E-Stop or A-Stop, or granted permission by a Head REFEREE or FTA."},
 	{3, "G402", true, false, "In AUTO, a DRIVE TEAM member may not directly or indirectly interact with a ROBOT or an OPERATOR CONSOLE unless for personal safety, OPERATOR CONSOLE safety, or pressing an E-Stop or A-Stop."},
@@ -39,10 +39,8 @@ var rules = []*Rule{
 	{22, "MA2613", false, false, "Adding treasures within endgame [treasure does not count for scoring]"},
 	{23, "MA2614", false, false, "Placing/Shooting treasures within the opposing alliance zones"},
 	{24, "MA2616", false, false, "Controlling more than 3 gamepieces at a non-momentarily time [additional treasures do not count for scoring][ref discretion]"},
-	{25, "MA2617", false, false, "Throwing a treasure into/on the shelf not inside own Safe House[treasure does not count for scoring]"}
- }
-	
-
+	{25, "MA2617", false, false, "Throwing a treasure into/on the shelf not inside own Safe House[treasure does not count for scoring]"},
+}
 
 // @formatter:on
 var ruleMap map[int]*Rule

@@ -1,9 +1,9 @@
 game:
-  name: "My Custom Game"
+  name: "Medieval M-Ayhem"
 
 fouls:
   minor_foul_points: 5
-  major_foul_points: 15
+  major_foul_points: 10
 
 # game_pieces: Declare the actual physical game pieces. Required on each scoring_counts entry (a
 # count is always "a robot scoring a piece"). Piece identity only — it is not a rollup; to group
@@ -11,9 +11,9 @@ fouls:
 game_pieces:
   - id: cube
     display_name: "Treasure"
-  - id: golden_Cube
+  - id: golden_cube
     display_name: "Dragon's Crown"
-  - id: toss_Cube
+  - id: toss_cube
     display_name: "Tossed Cube"
 
 # scoring_groups: Declare rollup buckets. A scoring_counts entry tagged with scoring_group has its
@@ -23,33 +23,35 @@ game_pieces:
 scoring_groups:
   - id: shelf
     display_name: "Shelf"
-  - id: toss_Buclet
+  - id: toss_bucket
     display_name: "Treasure Chest"
 
 # scoring_counts: Auto/teleop/endgame counter elements. Each entry lists the phases it can be
 # scored in, each with its own points value (a piece can be worth different points in different
 # phases or on different structures).
+#
+# The Dragon's Crown ("golden") cube doubles the point value of each placement. The schema has no
+# multiplier, so each shelf/toss placement has a paired *_golden count at double points.
 scoring_counts:
-  - id: shelf_Ground
-    display_name: "Ground Score "
+  - id: shelf_ground
+    display_name: "Ground Score"
     game_piece: cube
-    scoring_group: Shelf
+    scoring_group: shelf
     phases:
       - phase: auto
         points: 4
-      - phase: teleop, endgame
+      - phase: teleop
         points: 2
 
   - id: shelf_L1
     display_name: "Level 1 Score"
     game_piece: cube
-    scoring_group: Shelf
+    scoring_group: shelf
     phases:
       - phase: auto
         points: 8
-      - phase: teleop, endgame
+      - phase: teleop
         points: 5
-
 
   - id: shelf_L2
     display_name: "Level 2 Score"
@@ -58,18 +60,71 @@ scoring_counts:
     phases:
       - phase: auto
         points: 12
-      - phase: teleop, endgame
+      - phase: teleop
         points: 10
 
-  - id: shelf_Stacked
-    display_name: "Stacked Cube Score"
+  - id: shelf_stacked
+    display_name: "Stacked Score"
     game_piece: cube
     scoring_group: shelf
     phases:
-      - phase: teleop, endgame
+      - phase: teleop
         points: 8
 
+  - id: shelf_ground_golden
+    display_name: "Ground Score (Crown)"
+    game_piece: golden_cube
+    scoring_group: shelf
+    phases:
+      - phase: auto
+        points: 8
+      - phase: teleop
+        points: 4
 
+  - id: shelf_L1_golden
+    display_name: "Level 1 Score (Crown)"
+    game_piece: golden_cube
+    scoring_group: shelf
+    phases:
+      - phase: auto
+        points: 16
+      - phase: teleop
+        points: 10
+
+  - id: shelf_L2_golden
+    display_name: "Level 2 Score (Crown)"
+    game_piece: golden_cube
+    scoring_group: shelf
+    phases:
+      - phase: auto
+        points: 24
+      - phase: teleop
+        points: 20
+
+  - id: shelf_stacked_golden
+    display_name: "Stacked Score (Crown)"
+    game_piece: golden_cube
+    scoring_group: shelf
+    phases:
+      - phase: teleop
+        points: 16
+
+  # The Toss — throwing treasures into the Treasure Chest in the final 10 seconds of endgame.
+  - id: toss
+    display_name: "The Toss™"
+    game_piece: toss_cube
+    scoring_group: toss_bucket
+    phases:
+      - phase: endgame
+        points: 2
+
+  - id: toss_golden
+    display_name: "The Toss™ (Crown)"
+    game_piece: golden_cube
+    scoring_group: toss_bucket
+    phases:
+      - phase: endgame
+        points: 4
 
 # statuses: Per-robot statuses (3 robots per alliance). Phases takes exactly one entry, same
 # {phase, points} shape as scoring_counts (auto or endgame only — teleop is not supported for
@@ -84,19 +139,16 @@ statuses:
     phases:
       - phase: auto
         points: 4
-  - id: balance_Beam
+  - id: balance_beam_auto
     display_name: "Mountain Top"
     phases:
       - phase: auto
         points: 12
-      - phase: endgame
-        points: 12
-  - id: the_Toss
-    display_name: "The toss tm"
+  - id: balance_beam
+    display_name: "Mountain Top"
     phases:
       - phase: endgame
-        points: 2
-    
+        points: 12
   - id: park
     display_name: "Park"
     phases:
@@ -106,25 +158,23 @@ statuses:
 # ranking_points: Custom RP bonus conditions.
 # logic_func must be implemented in game/custom_scoring_logic.go.
 ranking_points:
-  - id: auton_rp
+  - id: auton_bonus
     display_name: "Auto Bonus"
-    logic_func: "ComputeAutonRP"
+    logic_func: "ComputeAutonBonusRP"
 
-  - id: scoring_rp
+  - id: scoring_bonus
     display_name: "Score Bonus"
-    logic_func: "ComputeScoringRP"
+    logic_func: "ComputeScoringBonusRP"
 
-  - id: endgame_rp
+  - id: endgame_bonus
     display_name: "End Bonus"
-    logic_func: "ComputeEndgameRP"
+    logic_func: "ComputeEndgameBonusRP"
 
 # ranking_tiebreakers: Drives RankingFields struct fields and Less() sort.
 # Applies after RankingPoints/Played.
 ranking_tiebreakers:
   - metric: total_points
   - metric: auto_points
-  
-
 
 # playoff_tiebreakers: Drives DetermineMatchStatus() cascade for tied playoff matches.
 # Opponent major fouls are always first (implicit — don't list here).

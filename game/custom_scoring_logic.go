@@ -18,24 +18,25 @@ package game
 //     expose (and for cross-alliance logic). The opponent's *summary* is deliberately not passed —
 //     it would recurse back through this same logic.
 
-// ComputeAutonRP: alliance places more than 2 game pieces on Structure 1 (either level) during auto.
-// (Could also be written against the summary, e.g. `return summary.AutoPoints >= 9`.)
-func ComputeAutonRP(score, opponentScore Score, summary ScoreSummary) bool {
-	return score.AutoStructure1Level1Count+score.AutoStructure1Level2Count > 2
-}
-
-// ComputeScoringRP: alliance places 10 or more game pieces on Structure 1 during teleop.
-func ComputeScoringRP(score, opponentScore Score, summary ScoreSummary) bool {
-	return score.TeleopStructure1Level1Count+score.TeleopStructure1Level2Count >= 10
-}
-
-// ComputeEndgameRP: alliance parks at least two of three robots.
-func ComputeEndgameRP(score, opponentScore Score, summary ScoreSummary) bool {
-	parked := 0
-	for _, p := range score.ParkStatuses {
-		if p {
-			parked++
-		}
+func ComputeAutonBonusRP(score, opponentScore Score, summary ScoreSummary) bool {
+	if summary.AutoPoints >= 20 {
+		return true
 	}
-	return parked >= 2
+	if opponentScore.HasRankingPointFoul("MA2603") {
+		return true
+	}
+	return false
+}
+
+func ComputeScoringBonusRP(score, opponentScore Score, summary ScoreSummary) bool {
+	// count up:
+	// score.TeleopShelfL1Count, score.TeleopShelfL2Count, score.TeleopShelfStackedCount
+	// score.TeleopShelfL1CountGolden, score.TeleopShelfL2CountGolden, score.TeleopShelfStackedCountGolden
+	return false
+}
+
+func ComputeEndgameBonusRP(score, opponentScore Score, summary ScoreSummary) bool {
+	// check:
+	// score.AnyBalanceBeamStatus, opponent.HasRankingPointFoul("", "")
+	return false
 }

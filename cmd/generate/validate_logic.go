@@ -149,60 +149,81 @@ func missingLogicFuncMessage(y *GameYAML, logicPath string, missing []RankingPoi
 		fmt.Fprintf(&b, "\nfunc %s(score, opponentScore Score, summary ScoreSummary) bool {\n\t// TODO: implement (ranking_points '%s')\n\treturn false\n}\n",
 			rp.LogicFunc, rp.ID)
 	}
-	b.WriteString("\nData available to the logic (generated from the current custom_game.yaml):")
-	if counts := scoreHintFields(y); len(counts) > 0 {
-		b.WriteString("\n  score / opponentScore counts: " + strings.Join(counts, ", "))
-	}
-	if helpers := statusHelperHints(y); len(helpers) > 0 {
-		b.WriteString("\n  score / opponentScore status helpers: " + strings.Join(helpers, "; "))
-	}
-	b.WriteString("\n  summary point totals: " + strings.Join(summaryHintFields(y), ", "))
-	b.WriteString("\n  opponent fouls (bonus RP): opponentScore.HasRankingPointFoul(ruleNumbers ...string)")
+	b.WriteString(dataReference(y))
 	return b.String()
 }
 
-// scoreHintFields lists the generated Score count fields, in declaration order.
-func scoreHintFields(y *GameYAML) []string {
-	var fields []string
+// dataReference renders the fields available to scoring logic — grouped by kind and aligned one
+// element per line — so an author can scan the id -> generated-name mapping instead of parsing one
+// long comma-separated list.
+func dataReference(y *GameYAML) string {
+	// Column width to left-align the id/label across every section.
+	width := len("scoring groups")
 	for _, sc := range y.ScoringCounts {
-		for _, ep := range sc.Phases {
-			fields = append(fields, phaseFieldPrefix[ep.Phase]+toCamelCase(sc.ID)+"Count")
+		if len(sc.ID) > width {
+			width = len(sc.ID)
 		}
 	}
-	return fields
-}
-
-// statusHelperHints lists each status's Any/Count helper signature, including the enum value consts
-// an author passes as the atLeast threshold.
-func statusHelperHints(y *GameYAML) []string {
-	var hints []string
 	for _, st := range y.Statuses {
-		name := toCamelCase(st.ID)
-		if len(st.Values) == 0 {
-			hints = append(hints, fmt.Sprintf("score.Any%sStatus()/Count%sStatus()", name, name))
-		} else {
-			vals := make([]string, len(st.Values))
-			for i, v := range st.Values {
-				vals[i] = name + toCamelCase(v.ID)
+		if len(st.ID) > width {
+			width = len(st.ID)
+		}
+	}
+	row := func(label, value string) string { return fmt.Sprintf("      %-*s  %s\n", width, label, value) }
+
+	var b strings.Builder
+	b.WriteString("\nData available to the logic (generated from the current custom_game.yaml):\n")
+
+	if len(y.ScoringCounts) > 0 {
+		b.WriteString("\n  score / opponentScore — raw per-element counts:\n")
+		for _, sc := range y.ScoringCounts {
+			fields := make([]string, len(sc.Phases))
+			for i, ep := range sc.Phases {
+				fields[i] = phaseFieldPrefix[ep.Phase] + toCamelCase(sc.ID) + "Count"
 			}
-			hints = append(hints, fmt.Sprintf("score.Any%sStatus(atLeast %sStatus)/Count%sStatus(...) [values: %s]",
-				name, name, name, strings.Join(vals, ", ")))
+			b.WriteString(row(sc.ID, strings.Join(fields, ", ")))
 		}
 	}
-	return hints
-}
 
-// summaryHintFields lists the ScoreSummary point totals available to logic. It intentionally omits
-// the ranking-point fields and BonusRankingPoints, which aren't populated when the logic runs.
-func summaryHintFields(y *GameYAML) []string {
-	fields := []string{"AutoPoints", "TeleopPoints", "EndgamePoints", "MatchPoints", "FoulPoints", "Score"}
+	if len(y.Statuses) > 0 {
+		b.WriteString("\n  score / opponentScore — per-robot status helpers:\n")
+		for _, st := range y.Statuses {
+			name := toCamelCase(st.ID)
+			var sig string
+			if len(st.Values) == 0 {
+				sig = fmt.Sprintf("score.Any%sStatus() / score.Count%sStatus()", name, name)
+			} else {
+				vals := make([]string, len(st.Values))
+				for i, v := range st.Values {
+					vals[i] = name + toCamelCase(v.ID)
+				}
+				sig = fmt.Sprintf("score.Any%sStatus(atLeast %sStatus) / score.Count%sStatus(...)  [%s]",
+					name, name, name, strings.Join(vals, ", "))
+			}
+			b.WriteString(row(st.ID, sig))
+		}
+	}
+
+	b.WriteString("\n  summary — computed point totals:\n")
+	b.WriteString(row("phases/match", "AutoPoints, TeleopPoints, EndgamePoints, MatchPoints, FoulPoints, Score"))
+	var groups []string
 	for _, bucket := range buildScoringGroups(y) {
-		fields = append(fields, toCamelCase(bucket.ID)+"Points")
+		groups = append(groups, toCamelCase(bucket.ID)+"Points")
 	}
+	if len(groups) > 0 {
+		b.WriteString(row("scoring groups", strings.Join(groups, ", ")))
+	}
+	var statusPts []string
 	for _, st := range y.Statuses {
-		fields = append(fields, toCamelCase(st.ID)+"Points")
+		statusPts = append(statusPts, toCamelCase(st.ID)+"Points")
 	}
-	return fields
+	if len(statusPts) > 0 {
+		b.WriteString(row("statuses", strings.Join(statusPts, ", ")))
+	}
+
+	b.WriteString("\n  opponent fouls (bonus RP):\n")
+	b.WriteString("      opponentScore.HasRankingPointFoul(ruleNumbers ...string)\n")
+	return b.String()
 }
 
 // generatedFieldSets returns the exact field names the score.go.tmpl and score_summary.go.tmpl
